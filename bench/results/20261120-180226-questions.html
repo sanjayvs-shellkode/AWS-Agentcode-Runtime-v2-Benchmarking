@@ -1,0 +1,65 @@
+<!doctype html><html><head><meta charset="utf-8"><title>AgentCore Runtime V1 vs V2</title>
+<style>
+body{font-family:'Segoe UI',Arial,sans-serif;margin:0;color:#1f2937;background:#fff}
+.wrap{max-width:1180px;margin:0 auto;padding:18px 28px 40px}
+.top{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #e5e7eb;padding-bottom:8px}
+.logo{font-weight:800;font-size:20px;color:#1d4ed8}.logo span{color:#f97316}
+.tag{font-size:12px;color:#6b7280}
+h1{font-size:24px;margin:16px 0 4px}
+.lead{color:#374151;font-size:14px;margin:0 0 16px;line-height:1.5}
+.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:12px 0 22px}
+.card{border-radius:8px;padding:12px 14px;border:1px solid #e5e7eb}
+.card.g{background:#f0fdf4;border-color:#bbf7d0}.card.b{background:#eff6ff;border-color:#bfdbfe}
+.card .big{font-size:26px;font-weight:700}.card.g .big{color:#15803d}.card.b .big{color:#1d4ed8}
+.card .sub{font-size:12px;color:#4b5563;margin-top:4px;line-height:1.4}
+h2{font-size:15px;font-weight:800;color:#1d4ed8;text-transform:uppercase;letter-spacing:.3px;margin:26px 0 8px}
+table{border-collapse:collapse;width:100%;font-size:13px;margin-bottom:6px}
+th{background:#f3f4f6;text-align:left;padding:7px 8px;border-bottom:2px solid #d1d5db;font-weight:700}
+td{padding:6px 8px;border-bottom:1px solid #e5e7eb;vertical-align:top}
+td.n{text-align:right;font-variant-numeric:tabular-nums}
+.good{color:#15803d;font-weight:700}.bad{color:#b91c1c;font-weight:700}.flat{color:#6b7280}
+.note{font-size:12px;color:#4b5563;line-height:1.55}
+ul.note{padding-left:18px;margin:6px 0}
+</style></head><body><div class="wrap">
+<div class="top"><div class="logo">ShellKode<span>.</span></div><div class="tag">AgentCore Runtime benchmark · run 20261120-180226-questions</div></div>
+<h1>AgentCore Runtime V1 vs V2: Strands Weather Agent</h1>
+<p class="lead">The same Strands agent (Claude Haiku 4.5, two weather tools behind AgentCore Gateway and Lambda) is deployed twice,
+once on platform version V1 and once on V2, with the same code package and settings. Each runtime answered ten single-city weather
+questions as cold starts, as warm calls on one session, and in concurrent bursts of 1, 10, 50 new sessions.
+162 measured calls, region ap-south-1, started 2026-11-20 12:32:26 UTC.</p>
+
+<div class="cards">
+ <div class="card g"><div class="big">9.25 s → 6.34 s</div>
+  <div class="sub">Cold start P50, V1 → V2. 31% faster on V2.</div></div>
+ <div class="card g"><div class="big">4.96 s → 1.66 s</div>
+  <div class="sub">Startup overhead P50 on a new session (client latency minus the agent's own work).</div></div>
+ <div class="card b"><div class="big">4.95 s / 4.72 s</div>
+  <div class="sub">Warm P50, V1 / V2. Once a session is running, both versions serve at the same speed.</div></div>
+ <div class="card b"><div class="big">50/50 · 50/50</div>
+  <div class="sub">Successful calls in the x50 burst, V1 · V2. P50 12.92 s / 5.77 s.</div></div>
+</div>
+<h2>V1 vs V2 at a glance</h2>
+<table><tr><th>Scenario</th><th>Calls OK (V1 / V2)</th><th>V1 P50</th><th>V2 P50</th><th>V2 vs V1</th><th>V1 P90</th><th>V2 P90</th><th>V1 overhead P50</th><th>V2 overhead P50</th></tr><tr><td>Cold start (new session per call)</td><td>10/10 · 10/10</td><td class=n>9,245</td><td class=n>6,336</td><td class=n><span class="good">-31%</span></td><td class=n>10,194</td><td class=n>8,015</td><td class=n>4,962</td><td class=n>1,655</td></tr><tr><td>Warm (same session reused)</td><td>10/10 · 10/10</td><td class=n>4,954</td><td class=n>4,721</td><td class=n><span class="flat">-5%</span></td><td class=n>6,774</td><td class=n>7,142</td><td class=n>106</td><td class=n>139</td></tr><tr><td>Concurrent cold starts x1</td><td>1/1 · 1/1</td><td class=n>11,858</td><td class=n>5,537</td><td class=n><span class="good">-53%</span></td><td class=n>11,858</td><td class=n>5,537</td><td class=n>5,391</td><td class=n>1,441</td></tr><tr><td>Concurrent cold starts x10</td><td>10/10 · 10/10</td><td class=n>8,982</td><td class=n>6,905</td><td class=n><span class="good">-23%</span></td><td class=n>10,721</td><td class=n>8,889</td><td class=n>4,850</td><td class=n>2,358</td></tr><tr><td>Concurrent cold starts x50</td><td>50/50 · 50/50</td><td class=n>12,925</td><td class=n>5,769</td><td class=n><span class="good">-55%</span></td><td class=n>15,143</td><td class=n>9,328</td><td class=n>8,494</td><td class=n>1,623</td></tr></table>
+<p class="note">Times in ms, measured on the client from request to full answer. Green = V2 at least 5% faster, red = at least 5% slower.</p>
+
+<h2>Per-question latency</h2>
+<table><tr><th>#</th><th>Question</th><th>Cold V1</th><th>Cold V2</th><th>V2 vs V1</th><th>Warm V1</th><th>Warm V2</th><th>Cold overhead V1</th><th>Cold overhead V2</th></tr><tr><td>1</td><td>What&#x27;s the weather in Paris right now?</td><td class=n>10,079</td><td class=n>6,318</td><td class=n><span class="good">-37%</span></td><td class=n>4,251</td><td class=n>5,506</td><td class=n>5,307</td><td class=n>1,978</td></tr><tr><td>2</td><td>What&#x27;s the current temperature in Mumbai?</td><td class=n>8,913</td><td class=n>6,648</td><td class=n><span class="good">-25%</span></td><td class=n>4,021</td><td class=n>3,780</td><td class=n>4,878</td><td class=n>1,603</td></tr><tr><td>3</td><td>Is it raining in London at the moment?</td><td class=n>9,060</td><td class=n>6,132</td><td class=n><span class="good">-32%</span></td><td class=n>6,711</td><td class=n>4,022</td><td class=n>4,979</td><td class=n>1,802</td></tr><tr><td>4</td><td>How windy is it in Chennai right now?</td><td class=n>9,840</td><td class=n>5,945</td><td class=n><span class="good">-40%</span></td><td class=n>4,775</td><td class=n>8,951</td><td class=n>5,287</td><td class=n>1,673</td></tr><tr><td>5</td><td>What&#x27;s the humidity in Singapore right now?</td><td class=n>9,141</td><td class=n>6,354</td><td class=n><span class="good">-30%</span></td><td class=n>5,133</td><td class=n>3,857</td><td class=n>4,872</td><td class=n>1,430</td></tr><tr><td>6</td><td>Should I carry an umbrella in Bangalore today?</td><td class=n>11,221</td><td class=n>10,885</td><td class=n><span class="flat">-3%</span></td><td class=n>7,339</td><td class=n>6,941</td><td class=n>5,468</td><td class=n>1,669</td></tr><tr><td>7</td><td>Is it cloudy in Tokyo right now?</td><td class=n>9,073</td><td class=n>5,833</td><td class=n><span class="good">-36%</span></td><td class=n>6,106</td><td class=n>3,896</td><td class=n>5,326</td><td class=n>1,836</td></tr><tr><td>8</td><td>How hot is it in Dubai at the moment?</td><td class=n>8,932</td><td class=n>5,272</td><td class=n><span class="good">-41%</span></td><td class=n>3,868</td><td class=n>3,902</td><td class=n>4,946</td><td class=n>1,590</td></tr><tr><td>9</td><td>What&#x27;s the weather like in New York right now?</td><td class=n>9,350</td><td class=n>7,697</td><td class=n><span class="good">-18%</span></td><td class=n>6,115</td><td class=n>5,421</td><td class=n>4,922</td><td class=n>1,641</td></tr><tr><td>10</td><td>Is it a good time for a walk in Sydney, based on the current weather?</td><td class=n>9,859</td><td class=n>6,735</td><td class=n><span class="good">-32%</span></td><td class=n>4,678</td><td class=n>6,532</td><td class=n>4,933</td><td class=n>1,513</td></tr></table>
+<p class="note">One call per question per scenario, so single values vary with the model and the weather API. Compare the summary rows for trends.</p>
+
+<h2>Full statistics by scenario</h2>
+<table><tr><th>Scenario</th><th>Runtime</th><th>OK / calls</th><th>Min</th><th>P50</th><th>P90</th><th>Max</th><th>Mean</th><th>Server P50</th><th>Overhead P50</th></tr><tr><td>Cold start (new session per call)</td><td>V1</td><td>10/10</td><td class=n>8,913</td><td class=n>9,245</td><td class=n>10,194</td><td class=n>11,221</td><td class=n>9,547</td><td class=n>4,348</td><td class=n>4,962</td></tr><tr><td>Cold start (new session per call)</td><td>V2</td><td>10/10</td><td class=n>5,272</td><td class=n>6,336</td><td class=n>8,015</td><td class=n>10,885</td><td class=n>6,782</td><td class=n>4,632</td><td class=n>1,655</td></tr><tr><td>Warm (same session reused)</td><td>V1</td><td>10/10</td><td class=n>3,868</td><td class=n>4,954</td><td class=n>6,774</td><td class=n>7,339</td><td class=n>5,300</td><td class=n>4,843</td><td class=n>106</td></tr><tr><td>Warm (same session reused)</td><td>V2</td><td>10/10</td><td class=n>3,780</td><td class=n>4,721</td><td class=n>7,142</td><td class=n>8,951</td><td class=n>5,281</td><td class=n>4,602</td><td class=n>139</td></tr><tr><td>Concurrent cold starts x1</td><td>V1</td><td>1/1</td><td class=n>11,858</td><td class=n>11,858</td><td class=n>11,858</td><td class=n>11,858</td><td class=n>11,858</td><td class=n>6,466</td><td class=n>5,391</td></tr><tr><td>Concurrent cold starts x1</td><td>V2</td><td>1/1</td><td class=n>5,537</td><td class=n>5,537</td><td class=n>5,537</td><td class=n>5,537</td><td class=n>5,537</td><td class=n>4,096</td><td class=n>1,441</td></tr><tr><td>Concurrent cold starts x10</td><td>V1</td><td>10/10</td><td class=n>8,441</td><td class=n>8,982</td><td class=n>10,721</td><td class=n>11,750</td><td class=n>9,475</td><td class=n>4,047</td><td class=n>4,850</td></tr><tr><td>Concurrent cold starts x10</td><td>V2</td><td>10/10</td><td class=n>5,937</td><td class=n>6,905</td><td class=n>8,889</td><td class=n>17,990</td><td class=n>8,006</td><td class=n>4,558</td><td class=n>2,358</td></tr><tr><td>Concurrent cold starts x50</td><td>V1</td><td>50/50</td><td class=n>8,622</td><td class=n>12,925</td><td class=n>15,143</td><td class=n>22,453</td><td class=n>12,795</td><td class=n>4,481</td><td class=n>8,494</td></tr><tr><td>Concurrent cold starts x50</td><td>V2</td><td>50/50</td><td class=n>4,854</td><td class=n>5,769</td><td class=n>9,328</td><td class=n>11,900</td><td class=n>6,589</td><td class=n>3,966</td><td class=n>1,623</td></tr></table>
+
+<h2>Failed calls</h2>
+<p class="note">No failed calls.</p>
+
+<h2>Method and limits</h2>
+<ul class="note">
+<li>Runtimes: V1 = wxbench_weather_v1 (version 3, platform V1); V2 = wxbench_weather_v2 (version 3, platform V2).</li>
+<li>Request path: client → AgentCore Runtime → Strands agent → Bedrock (application inference profile, Claude Haiku 4.5) and AgentCore Gateway → Lambda → Open-Meteo.</li>
+<li>Session IDs are new UUIDs per cold call and per burst call. Warm calls reuse one UUID per runtime; its first (setup) call is excluded.</li>
+<li>Server time is the agent's <code>POST /invocations</code> span from AgentCore Observability. Overhead = client latency − server time, which covers session startup and network between this client and ap-south-1. Calls without a matched span: 0.</li>
+<li>Bursts send all calls at once from one client. AgentCore's quota in this account is 25 new sessions per second, so the x50 bursts can be throttled; throttled calls are listed as failures, not retried.</li>
+<li>Bedrock throttling inside the agent is retried by Strands, so it shows up as longer server time, not as a failure.</li>
+<li>Small samples: 10 calls per sequential scenario. P50 is a usable comparison; P90 and Max are rough.</li>
+</ul>
+</div></body></html>
