@@ -2,3 +2,10 @@
 __pycache__/
 *.pyc
 .env
+build/
+cdk.out/
+infra/cdk.out/
+.pytest_cache/
+.kiro/sess_*/
+*.lnk
+infra/outputs.json

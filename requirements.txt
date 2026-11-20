@@ -3,3 +3,5 @@ bedrock-agentcore
 aws-opentelemetry-distro
 boto3
 requests
+# mcp 2.x renamed streamablehttp_client and dropped its auth argument; gateway_client.py uses the 1.x API.
+mcp>=1.23.0,<2.0.0
