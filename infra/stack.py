@@ -30,7 +30,7 @@ class WeatherBenchStack(Stack):
     def __init__(self, scope: Construct, construct_id: str, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        # Tool host: one Lambda serving geocode_city and get_forecast.
+        # Tool host: one Lambda serving geocode_city, get_forecast and convert_temperature.
         tool_logs = logs.LogGroup(
             self, "ToolLogs",
             log_group_name=f"/aws/lambda/{PREFIX}-weather-tools",
@@ -56,7 +56,7 @@ class WeatherBenchStack(Stack):
         )
         tool_fn.grant_invoke(gateway_role)
 
-        # Short-term memory only, no long-term strategies.
+        # Short-term memory: the agent's conversation history per session and user. No long-term strategies.
         memory = agentcore.CfnMemory(
             self, "Memory",
             name=f"{PREFIX}_memory",
@@ -74,14 +74,30 @@ class WeatherBenchStack(Stack):
             tags=REQUIRED_TAGS,
         )
 
-        def tool(name: str, description: str, props: dict, required: list[str]) -> agentcore.CfnGatewayTarget.ToolDefinitionProperty:
+        def prop(kind: str, description: str | None = None) -> agentcore.CfnGatewayTarget.SchemaDefinitionProperty:
+            return agentcore.CfnGatewayTarget.SchemaDefinitionProperty(type=kind, description=description)
+
+        def tool(name: str, description: str, props: dict) -> agentcore.CfnGatewayTarget.ToolDefinitionProperty:
+            # Every argument is required.
             return agentcore.CfnGatewayTarget.ToolDefinitionProperty(
                 name=name,
                 description=description,
                 input_schema=agentcore.CfnGatewayTarget.SchemaDefinitionProperty(
-                    type="object", properties=props, required=required,
+                    type="object", properties=props, required=list(props),
                 ),
             )
+
+        unit = "celsius or fahrenheit"
+        weather_tools = [
+            tool("geocode_city", "Find the latitude and longitude of a city by name.",
+                 {"city": prop("string", "City name, for example Paris")}),
+            tool("get_forecast",
+                 "Get current weather at a location: temperature in Celsius, relative humidity in %, "
+                 "wind speed in km/h, sky conditions and the local time.",
+                 {"latitude": prop("number"), "longitude": prop("number")}),
+            tool("convert_temperature", "Convert a temperature between Celsius and Fahrenheit.",
+                 {"value": prop("number"), "from_unit": prop("string", unit), "to_unit": prop("string", unit)}),
+        ]
 
         gateway_target = agentcore.CfnGatewayTarget(
             self, "WeatherTarget",
@@ -91,25 +107,7 @@ class WeatherBenchStack(Stack):
                 mcp=agentcore.CfnGatewayTarget.McpTargetConfigurationProperty(
                     lambda_=agentcore.CfnGatewayTarget.McpLambdaTargetConfigurationProperty(
                         lambda_arn=tool_fn.function_arn,
-                        tool_schema=agentcore.CfnGatewayTarget.ToolSchemaProperty(
-                            inline_payload=[
-                                tool(
-                                    "geocode_city",
-                                    "Find the latitude and longitude of a city.",
-                                    {"city": agentcore.CfnGatewayTarget.SchemaDefinitionProperty(type="string", description="City name")},
-                                    ["city"],
-                                ),
-                                tool(
-                                    "get_forecast",
-                                    "Get current weather for a latitude and longitude.",
-                                    {
-                                        "latitude": agentcore.CfnGatewayTarget.SchemaDefinitionProperty(type="number"),
-                                        "longitude": agentcore.CfnGatewayTarget.SchemaDefinitionProperty(type="number"),
-                                    },
-                                    ["latitude", "longitude"],
-                                ),
-                            ]
-                        ),
+                        tool_schema=agentcore.CfnGatewayTarget.ToolSchemaProperty(inline_payload=weather_tools),
                     )
                 )
             ),
@@ -139,11 +137,12 @@ class WeatherBenchStack(Stack):
             ],
         ))
         runtime_role.add_to_policy(iam.PolicyStatement(
+            # What the Strands Memory session manager calls to load and save conversation turns.
             actions=[
                 "bedrock-agentcore:CreateEvent",
                 "bedrock-agentcore:ListEvents",
                 "bedrock-agentcore:GetEvent",
-                "bedrock-agentcore:ListSessions",
+                "bedrock-agentcore:DeleteEvent",
             ],
             resources=[memory.attr_memory_arn],
         ))
@@ -186,7 +185,11 @@ class WeatherBenchStack(Stack):
                         runtime="PYTHON_3_12",
                     )
                 ),
-                environment_variables={"GATEWAY_URL": gateway.attr_gateway_url, "MODEL_ID": MODEL_PROFILE_ARN},
+                environment_variables={
+                    "GATEWAY_URL": gateway.attr_gateway_url,
+                    "MODEL_ID": MODEL_PROFILE_ARN,
+                    "MEMORY_ID": memory.attr_memory_id,
+                },
                 tags=REQUIRED_TAGS,
             )
 

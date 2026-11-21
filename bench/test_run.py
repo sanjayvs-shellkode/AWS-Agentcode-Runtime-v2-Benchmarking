@@ -28,5 +28,6 @@ def test_attach_leaves_blank_when_span_count_differs():
 def test_stats():
     s = run.stats([float(x) for x in range(1, 11)])
     assert (s["n"], s["min"], s["p50"], s["max"], s["mean"]) == (10, 1.0, 5.5, 10.0, 5.5)
-    assert round(s["p90"], 1) == 9.1
+    assert (round(s["p75"], 2), round(s["p90"], 2), round(s["p95"], 2)) == (7.75, 9.1, 9.55)
+    assert run.stats([4.0])["p95"] == 4.0
     assert run.stats([]) is None

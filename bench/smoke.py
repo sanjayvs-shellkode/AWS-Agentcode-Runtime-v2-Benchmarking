@@ -1,11 +1,10 @@
 """Smoke checks for the deployed stack. Reads resource IDs from the CDK outputs.
 
 Usage (from the repo root, with AWS_PROFILE and AWS_REGION set):
-  python bench/smoke.py wait      # poll both runtimes until READY
-  python bench/smoke.py gateway   # MCP tools/list through the Gateway
-  python bench/smoke.py invoke v1      # direct-mode call on weather-v1
-  python bench/smoke.py invoke v2      # direct-mode call on weather-v2
-  python bench/smoke.py invoke v1 llm  # LLM-mode call (needs Bedrock access)
+  python bench/smoke.py wait              # poll both runtimes until READY
+  python bench/smoke.py gateway           # MCP tools/list through the Gateway
+  python bench/smoke.py invoke v1         # one agent (LLM) call on weather-v1
+  python bench/smoke.py invoke v2 direct  # Gateway tools only, no model
 """
 import json
 import sys
@@ -59,14 +58,14 @@ def gateway() -> None:
     print(resp.text[:1500])
 
 
-def invoke(which: str, mode: str = "direct") -> None:
+def invoke(which: str, mode: str = "llm") -> None:
     arn = outputs()[f"Runtime{which.upper()}Arn"]
     client = boto3.Session(region_name=REGION).client("bedrock-agentcore")
     session_id = str(uuid.uuid4())  # 36 characters, above the 33-character minimum
-    if mode == "llm":
-        body = {"prompt": "What is the weather in Paris right now?"}
-    else:
+    if mode == "direct":
         body = {"mode": "direct", "city": "Paris"}
+    else:
+        body = {"prompt": "What is the weather in Paris right now?"}
     payload = json.dumps(body).encode()
     resp = client.invoke_agent_runtime(agentRuntimeArn=arn, runtimeSessionId=session_id, payload=payload)
     print("session:", session_id)
@@ -80,6 +79,6 @@ if __name__ == "__main__":
     elif cmd == "gateway":
         gateway()
     elif cmd == "invoke":
-        invoke(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "direct")
+        invoke(sys.argv[2], sys.argv[3] if len(sys.argv) > 3 else "llm")
     else:
         raise SystemExit(f"unknown command: {cmd}")

@@ -10,8 +10,8 @@ After the calls, the script waits for spans and adds each request's server-side 
 session startup plus network.
 
 Usage (repo root, AWS_PROFILE and AWS_REGION set):
-  python bench/run.py --mode direct --calls 10
-  python bench/run.py --mode llm --calls 10
+  python bench/run.py --calls 10                  # LLM mode (default)
+  python bench/run.py --mode direct --calls 10    # Gateway tools only, no model
   python bench/run.py --analyze bench/results/<file>.csv   # redo the span lookup later
 """
 import argparse
@@ -90,12 +90,16 @@ def run(mode: str, calls: int) -> tuple[list[dict], str]:
     return rows, run_id
 
 
-def span_lookup(rows: list[dict]):
+def fetch_spans(rows: list[dict]):
+    """Return lookup(version, session_id) -> that session's spans, oldest first.
+
+    Each span is {"name", "start" (ns), "end" (ns), "ms", "attrs"}, read from the runtime's spans log stream.
+    """
     ids = {v: arn.split("/")[-1] for v, arn in runtime_arns().items()}
     logs = boto3.Session(region_name=REGION).client("logs")
     start_ms = int(min(datetime.fromisoformat(r["started_at"]) for r in rows).timestamp() * 1000) - 60_000
 
-    def lookup(version: str, session_id: str) -> list[float]:
+    def lookup(version: str, session_id: str) -> list[dict]:
         kwargs = {"logGroupName": f"/aws/bedrock-agentcore/runtimes/{ids[version]}-DEFAULT",
                   "logStreamNames": ["spans"], "filterPattern": f'"{session_id}"', "startTime": start_ms}
         spans = []
@@ -103,14 +107,23 @@ def span_lookup(rows: list[dict]):
             page = logs.filter_log_events(**kwargs)
             for e in page["events"]:
                 d = json.loads(e["message"])
-                if d.get("name") == "POST /invocations":
-                    spans.append((d["startTimeUnixNano"], d["durationNano"] / 1e6))
+                start, dur = d.get("startTimeUnixNano"), d.get("durationNano")
+                if d.get("name") and start is not None and dur is not None:
+                    spans.append({"name": d["name"], "start": start, "end": start + dur, "ms": dur / 1e6,
+                                  "attrs": d.get("attributes", {})})
             if not page.get("nextToken"):
                 break
             kwargs["nextToken"] = page["nextToken"]
-        return [ms for _, ms in sorted(spans)]
+        return sorted(spans, key=lambda s: s["start"])
 
     return lookup
+
+
+def span_lookup(rows: list[dict]):
+    """Return lookup(version, session_id) -> POST /invocations durations in ms, oldest first."""
+    spans = fetch_spans(rows)
+    return lambda version, session_id: [s["ms"] for s in spans(version, session_id)
+                                        if s["name"] == "POST /invocations"]
 
 
 def attach_server_times(rows: list[dict], lookup) -> int:
@@ -140,9 +153,10 @@ def stats(values: list[float]) -> dict | None:
     v = sorted(values)
     if not v:
         return None
-    p90 = statistics.quantiles(v, n=10, method="inclusive")[8] if len(v) > 1 else v[0]
-    return {"n": len(v), "min": v[0], "p50": statistics.median(v), "p90": p90,
-            "max": v[-1], "mean": statistics.fmean(v)}
+    # Cut points at every 5%: index 14 = P75, 17 = P90, 18 = P95 (linear interpolation).
+    q = statistics.quantiles(v, n=20, method="inclusive") if len(v) > 1 else [v[0]] * 19
+    return {"n": len(v), "min": v[0], "p50": statistics.median(v), "p75": q[14], "p90": q[17],
+            "p95": q[18], "max": v[-1], "mean": statistics.fmean(v)}
 
 
 def summarize(rows: list[dict], missing: int, header: str) -> str:
@@ -150,8 +164,8 @@ def summarize(rows: list[dict], missing: int, header: str) -> str:
         return f"{x:,.0f}" if x is not None else "-"
 
     lines = [header, "",
-             "| Scenario | Runtime | OK / calls | Min | P50 | P90 | Max | Mean | Server P50 | Overhead P50 |",
-             "|---|---|---|---|---|---|---|---|---|---|"]
+             "| Scenario | Runtime | OK / calls | Min | P50 | P75 | P95 | Max | Mean | Server P50 | Overhead P50 |",
+             "|---|---|---|---|---|---|---|---|---|---|---|"]
     for scenario in ("cold", "warm"):
         for v in VERSIONS:
             group = [r for r in rows if r["scenario"] == scenario and r["version"] == v]
@@ -160,11 +174,11 @@ def summarize(rows: list[dict], missing: int, header: str) -> str:
             srv = stats([float(r["server_ms"]) for r in good if r["server_ms"] != ""])
             ovh = stats([float(r["overhead_ms"]) for r in good if r["overhead_ms"] != ""])
             if not lat:
-                lines.append(f"| {scenario} | {v} | 0 / {len(group)} | - | - | - | - | - | - | - |")
+                lines.append(f"| {scenario} | {v} | 0 / {len(group)} | - | - | - | - | - | - | - | - |")
                 continue
             lines.append(
                 f"| {scenario} | {v} | {len(good)} / {len(group)} | {fmt(lat['min'])} | {fmt(lat['p50'])} "
-                f"| {fmt(lat['p90'])} | {fmt(lat['max'])} | {fmt(lat['mean'])} "
+                f"| {fmt(lat['p75'])} | {fmt(lat['p95'])} | {fmt(lat['max'])} | {fmt(lat['mean'])} "
                 f"| {fmt(srv['p50'] if srv else None)} | {fmt(ovh['p50'] if ovh else None)} |"
             )
     lines += ["", "All times in ms. Latency is measured on the client, end to end. Server = the agent's "
@@ -193,7 +207,7 @@ def write_csv(rows: list[dict], path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=PAYLOADS, default="direct")
+    ap.add_argument("--mode", choices=PAYLOADS, default="llm")
     ap.add_argument("--calls", type=int, default=10, help="measured calls per runtime per scenario")
     ap.add_argument("--span-wait", type=int, default=150, help="seconds to wait for spans to arrive")
     ap.add_argument("--analyze", type=Path, help="existing CSV: redo the span lookup and summary")
