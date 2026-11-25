@@ -118,11 +118,4 @@ python scripts/remove_hooks.py
 cd infra && cdk destroy
 ```
 
-## Documentation
 
-- [Benchmark Report](docs/results/v2-benchmark-full-report.html) - Full results with charts
-- [Technical Blog](docs/agentcore-runtime-v2-benchmark.md) - Detailed analysis
-
-## License
-
-MIT
