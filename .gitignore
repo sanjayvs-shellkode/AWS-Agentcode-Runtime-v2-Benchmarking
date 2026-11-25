@@ -1,11 +1,41 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+.eggs/
+
+# Environment
 .env
+.env.local
+
+# Build artifacts
 build/
 cdk.out/
 infra/cdk.out/
+*.zip
+
+# Testing
 .pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Kiro sessions
 .kiro/sess_*/
+
+# OS
 *.lnk
+.DS_Store
+Thumbs.db
+
+# Outputs (regenerated)
 infra/outputs.json
+docs/results/*.csv

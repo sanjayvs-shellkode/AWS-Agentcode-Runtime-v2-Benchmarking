@@ -1,10 +1,10 @@
 """Smoke checks for the deployed stack. Reads resource IDs from the CDK outputs.
 
 Usage (from the repo root, with AWS_PROFILE and AWS_REGION set):
-  python bench/smoke.py wait              # poll both runtimes until READY
-  python bench/smoke.py gateway           # MCP tools/list through the Gateway
-  python bench/smoke.py invoke v1         # one agent (LLM) call on weather-v1
-  python bench/smoke.py invoke v2 direct  # Gateway tools only, no model
+  python scripts/smoke.py wait              # poll both runtimes until READY
+  python scripts/smoke.py gateway           # MCP tools/list through the Gateway
+  python scripts/smoke.py invoke v1         # one agent (LLM) call on weather-v1
+  python scripts/smoke.py invoke v2 direct  # Gateway tools only, no model
 """
 import json
 import sys
@@ -14,9 +14,6 @@ from pathlib import Path
 
 import boto3
 import httpx
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "agent"))
-from gateway_client import GatewayAuth  # noqa: E402
 
 REGION = "ap-south-1"
 STACK = "wxbench-weather"
@@ -43,6 +40,10 @@ def wait() -> None:
 
 
 def gateway() -> None:
+    # Lazy import to avoid slow mcp import at module level
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
+    from gateway_client import GatewayAuth
+    
     url = outputs()["GatewayUrl"]
     region = url.split(".bedrock-agentcore.")[1].split(".amazonaws.com")[0]
     body = {"jsonrpc": "2.0", "id": 1, "method": "tools/list"}

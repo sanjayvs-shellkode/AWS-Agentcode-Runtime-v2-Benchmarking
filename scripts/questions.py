@@ -17,8 +17,8 @@ Billed usage settles about 30 minutes after the last call, when the sessions hav
 --analyze again after that for final memory and cost numbers.
 
 Usage (repo root, AWS_PROFILE and AWS_REGION set):
-  python bench/questions.py
-  python bench/questions.py --analyze bench/results/<file>.csv   # redo spans, usage and the report
+  python scripts/questions.py
+  python scripts/questions.py --analyze docs/results/<file>.csv   # redo spans, usage and the report
 """
 import argparse
 import csv
@@ -36,7 +36,7 @@ from botocore.config import Config
 import usage
 from run import REGION, VERSIONS, fetch_spans, invoke, runtime_arns, stats
 
-RESULTS = Path(__file__).resolve().parent / "results"
+RESULTS = Path(__file__).resolve().parents[1] / "docs" / "results"
 # Each needs coordinates, current weather, and a unit conversion; most need two or three cities.
 QUESTIONS = [
     "Compare the current temperature in London and New York in Fahrenheit. Which city is warmer, and by how many degrees?",

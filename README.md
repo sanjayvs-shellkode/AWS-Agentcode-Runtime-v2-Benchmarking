@@ -1,68 +1,128 @@
-# AgentCore Runtime V1 vs V2 benchmark
+# AWS Bedrock AgentCore Runtime V1 vs V2 Benchmark
 
-One Strands weather agent, deployed twice on Amazon Bedrock AgentCore Runtime: once on platform version V1
-and once on V2, with the same code package and settings. The benchmark compares cold starts, warm calls,
-concurrent cold starts, memory, CPU and cost per task.
+A comprehensive benchmark comparing Amazon Bedrock AgentCore Runtime V1 vs V2, measuring cold starts, warm calls, concurrent performance, and the impact of V2's warmup hooks optimization.
+
+## Architecture
 
 ```
-client -> AgentCore Runtime (V1 or V2) -> Strands agent (Claude Haiku 4.5)
+client -> AgentCore Runtime (V1 or V2) -> Strands agent (Claude Sonnet 4)
                                             |-> AgentCore Memory (conversation history per session)
                                             '-> AgentCore Gateway (MCP) -> Lambda -> Open-Meteo
 traces and logs -> CloudWatch (AgentCore Observability)
 ```
 
-## Layout
+## Project Structure
 
-| Path | What it is |
-|---|---|
-| `agent/` | The agent: `entrypoint.py` (served by Runtime) and `gateway_client.py` (SigV4-signed MCP client) |
-| `lambda/` | The Gateway's Lambda target: `geocode_city`, `get_forecast`, `convert_temperature` |
-| `infra/` | CDK app (`stack.py`) and `build.py`, which packages the Lambda (x86_64) and the agent zip (ARM64) |
-| `bench/` | `smoke.py` (quick checks), `questions.py` (ten multi-city questions and the HTML report), `run.py`, `usage.py` |
-| `bench/results/` | Raw CSVs and reports from past runs |
+```
+├── backend/                    # Agent runtime code
+│   ├── entrypoint.py          # Main agent entry point (served by Runtime)
+│   ├── gateway_client.py      # SigV4-signed MCP client for Gateway
+│   ├── requirements.txt       # Agent dependencies
+│   └── lambda/                # Gateway Lambda target
+│       ├── handler.py         # Lambda handler
+│       └── weather.py         # Weather tools (geocode, forecast, convert)
+├── docs/                      # Documentation and reports
+│   ├── images/                # Benchmark charts and diagrams
+│   └── results/               # Benchmark CSV results and HTML reports
+├── infra/                     # Infrastructure as Code (CDK)
+│   ├── app.py                 # CDK app entry point
+│   ├── stack.py               # AgentCore stack definition
+│   └── build.py               # Package builder for Lambda and agent
+├── scripts/                   # Benchmark and utility scripts
+│   ├── run.py                 # Main benchmark runner
+│   ├── smoke.py               # Quick health checks
+│   ├── questions.py           # Multi-city question benchmark
+│   ├── usage.py               # Cost calculation utilities
+│   ├── update_with_hooks.py   # Enable/update warmup hooks
+│   └── check_status.py        # Runtime status checker
+├── .env.example               # Environment variables template
+├── pyproject.toml             # Project configuration
+├── requirements-dev.txt       # Development dependencies
+└── README.md
+```
+
+## Key Results
+
+| Metric | V1 | V2 (no warmup) | V2 (with warmup) |
+|--------|----:|---------------:|------------------:|
+| Cold Start Overhead | 4,918ms | 1,626ms | 1,413ms |
+| Improvement vs V1 | - | 67% faster | 71% faster |
+| 50 Concurrent Calls | 25,261ms | 1,832ms | - |
+
+**Warmup optimization saves ~200ms (13%) on cold starts.**
 
 ## Setup
 
-Python 3.11+, Node.js 20+, `uv`, and the CDK CLI (`npm install -g aws-cdk`).
+**Requirements:** Python 3.11+, Node.js 20+, AWS CDK CLI
 
 ```powershell
-python -m pip install -r agent/requirements.txt -r lambda/requirements.txt -r infra/requirements.txt pytest httpx
-python -m pytest agent lambda bench
-$env:AWS_PROFILE = "<>"   # account and region are pinned in infra/app.py
-$env:AWS_REGION = "<>"
+# Install dependencies
+pip install -r requirements-dev.txt
+
+# Configure AWS
+cp .env.example .env
+# Edit .env with your AWS profile and region
+
+$env:AWS_PROFILE = "your-profile"
+$env:AWS_REGION = "ap-south-1"
 ```
 
 ## Deploy
 
 ```powershell
+# Build packages
 python infra/build.py
-cd infra; cdk deploy; cd ..
-python bench/smoke.py wait      # V2 prepares its snapshot, so it takes a few minutes to reach READY
-python bench/smoke.py gateway   # lists the three tools
-python bench/smoke.py invoke v1
-python bench/smoke.py invoke v2
+
+# Deploy infrastructure
+cd infra && cdk deploy && cd ..
+
+# Wait for V2 to be ready (snapshot preparation takes a few minutes)
+python scripts/smoke.py wait
+
+# Verify Gateway tools
+python scripts/smoke.py gateway
+
+# Test invocations
+python scripts/smoke.py invoke v1
+python scripts/smoke.py invoke v2
 ```
 
-## Benchmark
+## Run Benchmarks
 
 ```powershell
-python bench/questions.py   # ten multi-city questions; each answer uses all three tools
+# Quick benchmark (5 calls)
+python scripts/run.py --calls 5
+
+# Full benchmark with questions
+python scripts/questions.py
+
+# Concurrency test
+python scripts/run.py --concurrent 10
 ```
 
-Each run writes `bench/results/<run>.csv` and `<run>.html`. Memory, CPU and cost come from billed usage,
-which settles about 30 minutes after the last call. Rerun the report after that:
+Results are saved to `docs/results/`.
+
+## Enable Warmup Hooks (V2 only)
 
 ```powershell
-python bench/questions.py --analyze bench/results/<run>.csv
+# Add warmup hooks to V2 runtime
+python scripts/update_with_hooks.py
+
+# Remove hooks
+python scripts/remove_hooks.py
 ```
 
-The cost rates are in `bench/usage.py`. They come from the AWS pricing page examples (US East); set your
-Region's rates before quoting costs.
-
-## Clean up
+## Clean Up
 
 ```powershell
-cd infra; cdk destroy
+cd infra && cdk destroy
 ```
 
-This leaves the `CDKToolkit` bootstrap stack and the runtimes' CloudWatch log groups.
+## Documentation
+
+- [Benchmark Report](docs/results/v2-benchmark-full-report.html) - Full results with charts
+- [Technical Blog](docs/agentcore-runtime-v2-benchmark.md) - Detailed analysis
+
+## License
+
+MIT

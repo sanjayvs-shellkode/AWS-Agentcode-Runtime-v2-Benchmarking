@@ -1,0 +1,50 @@
+[project]
+name = "agentcore-benchmark"
+version = "1.0.0"
+description = "AWS Bedrock AgentCore Runtime V1 vs V2 Benchmarking Suite"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "Shellcode Private Limited"}
+]
+keywords = ["aws", "bedrock", "agentcore", "benchmark", "ai", "agents"]
+
+dependencies = [
+    "strands-agents",
+    "bedrock-agentcore",
+    "aws-opentelemetry-distro",
+    "boto3>=1.34.0",
+    "mcp>=1.23.0,<2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "black>=24.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.8.0",
+]
+infra = [
+    "aws-cdk-lib>=2.150.0",
+    "constructs>=10.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["scripts"]
+python_files = ["test_*.py"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "N", "W"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true

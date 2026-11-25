@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from aws_cdk import (
@@ -16,13 +17,16 @@ from constructs import Construct
 PREFIX = "wxbench"
 BUILD = Path(__file__).resolve().parents[1] / "build"
 AGENTCORE_PRINCIPAL = "bedrock-agentcore.amazonaws.com"
-# Bedrock application inference profile "runtime-v1-v2-benchmark" (Claude Haiku 4.5).
-MODEL_PROFILE_ARN = "arn:aws:bedrock:ap-south-1:106611079163:application-inference-profile/46u84t9z5klt"
 
-# Required tags for every resource in this request. Keys and values must match exactly.
+# Model configuration - set MODEL_PROFILE_ARN environment variable or update this default.
+# This should be a Bedrock application inference profile ARN for Claude Haiku 4.5.
+# Example: arn:aws:bedrock:REGION:ACCOUNT:application-inference-profile/PROFILE_ID
+MODEL_PROFILE_ARN = os.environ.get("MODEL_PROFILE_ARN", "")
+
+# Required tags for every resource. Update these for your environment.
 REQUIRED_TAGS = {
-    "createdby": "sahana.a@shellkode.com",
-    "purpose": "trying-new-approach-31054",
+    "createdby": "benchmark-user",
+    "purpose": "agentcore-runtime-benchmark",
 }
 
 
@@ -166,6 +170,9 @@ class WeatherBenchStack(Stack):
         ))
 
         def runtime(platform: str) -> agentcore.CfnRuntime:
+            # V2 warmup hook DISABLED for A/B testing
+            hooks = None
+            
             return agentcore.CfnRuntime(
                 self, f"Runtime{platform}",
                 agent_runtime_name=f"{PREFIX}_weather_{platform.lower()}",
@@ -189,7 +196,9 @@ class WeatherBenchStack(Stack):
                     "GATEWAY_URL": gateway.attr_gateway_url,
                     "MODEL_ID": MODEL_PROFILE_ARN,
                     "MEMORY_ID": memory.attr_memory_id,
+                    "WARMUP_ENABLED": "true",  # Force CDK to update the runtime
                 },
+                hooks_configuration=hooks,
                 tags=REQUIRED_TAGS,
             )
 

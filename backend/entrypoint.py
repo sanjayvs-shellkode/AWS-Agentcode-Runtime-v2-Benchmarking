@@ -8,14 +8,24 @@ Request payloads:
 Conversation history is kept in AgentCore Memory, keyed by the runtime session ID and the user, so
 follow-up questions in the same session have context.
 
-Nothing is created at import time. On platform V2 the process is snapshotted once /ping passes, and
-every session starts from that snapshot, so the model client, Memory client, MCP session and tool
-list are built per request. That keeps credentials, connections and the Gateway's tool list fresh
-in each session.
+V2 Optimization:
+  - /warmup endpoint implements memory and disk warmup phases
+  - Memory phase: Pre-load boto3 client and import heavy modules into snapshot
+  - Disk phase: Prime SSL certificates and HTTP connection paths
+  - Credentials, MCP connections and tool lists are still fetched per request for safety
+
+Constraints implemented for V2 snapshot safety:
+  - Random values (uuid4) generated inside request handler
+  - No timestamps at module level
+  - Fresh credentials per request via GatewayAuth
+  - Fresh tool list per request via list_tools_sync()
 """
 import json
 import os
 from uuid import uuid4
+
+import boto3
+import requests as http_requests  # For warmup disk phase
 
 from bedrock_agentcore.memory.integrations.strands.config import AgentCoreMemoryConfig
 from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
@@ -26,6 +36,11 @@ from strands.models import BedrockModel
 from gateway_client import get_gateway_client
 
 DEFAULT_USER = "default-user"
+
+# Global clients pre-loaded during warmup memory phase
+# These survive the snapshot and are ready for all sessions
+_bedrock_client = None
+_warmup_complete = False
 
 SYSTEM_PROMPT = """You are a weather assistant. Answer with live data from your tools:
 - weather___geocode_city turns a city name into coordinates.
@@ -42,6 +57,88 @@ Rules:
 - Lead with the direct answer, then the key numbers with units. Keep it short."""
 
 app = BedrockAgentCoreApp()
+
+
+# =============================================================================
+# WARMUP HOOK - V2 Optimization
+# =============================================================================
+
+async def warmup_handler(request):
+    """
+    Build warmup hook for V2 snapshot optimization.
+    
+    Called twice by AgentCore Runtime before taking the snapshot:
+    1. Memory phase: Load heavy objects into memory (included in snapshot)
+    2. Disk phase: Read files that sessions will need (primes OS cache)
+    
+    Both phases share a 120-second budget.
+    """
+    global _bedrock_client, _warmup_complete
+    
+    warmup_type = request.headers.get(
+        "X-Amzn-Bedrock-AgentCore-Runtime-Warmup-Type", ""
+    ).lower()
+    
+    if warmup_type == "memory":
+        # =================================================================
+        # MEMORY PHASE: Load objects that survive into the snapshot
+        # =================================================================
+        
+        # Pre-create boto3 client - socket will reconnect after restore,
+        # but client setup (endpoint resolution, etc.) is cached
+        _bedrock_client = boto3.client(
+            "bedrock-runtime",
+            region_name=os.environ.get("AWS_REGION", "ap-south-1")
+        )
+        
+        # Pre-import heavy modules so they're in memory
+        # (Already imported at top, but this ensures they're fully loaded)
+        from strands import Agent
+        from strands.models import BedrockModel
+        from bedrock_agentcore.memory.integrations.strands.session_manager import AgentCoreMemorySessionManager
+        
+        # Import MCP client dependencies
+        from mcp.client.streamable_http import streamablehttp_client
+        from strands.tools.mcp import MCPClient
+        
+        _warmup_complete = True
+        
+        from starlette.responses import JSONResponse
+        return JSONResponse({"status": "ok", "phase": "memory", "message": "Loaded boto3 client and modules"})
+    
+    elif warmup_type == "disk":
+        # =================================================================
+        # DISK PHASE: Read files that sessions will need
+        # =================================================================
+        
+        # Make a test HTTPS request to prime:
+        # - SSL certificates
+        # - CA bundle files
+        # - HTTP library native code
+        try:
+            http_requests.get("https://example.com", timeout=5)
+        except Exception:
+            pass  # Network issues during warmup are OK
+        
+        # Prime the Gateway connection path (but don't keep the connection)
+        # This loads SSL certs for the Gateway endpoint
+        gateway_url = os.environ.get("GATEWAY_URL", "")
+        if gateway_url:
+            try:
+                # Just do a HEAD request to prime SSL
+                http_requests.head(gateway_url.replace("/mcp", ""), timeout=5)
+            except Exception:
+                pass  # Gateway may not respond to HEAD, that's OK
+        
+        from starlette.responses import JSONResponse
+        return JSONResponse({"status": "ok", "phase": "disk", "message": "Primed SSL and HTTP paths"})
+    
+    from starlette.responses import JSONResponse
+    return JSONResponse({"status": "ok", "phase": "unknown"})
+
+
+# Register the warmup route
+app.add_route("/warmup", warmup_handler, methods=["POST"])
 
 
 def _tool_result(result: dict) -> dict:

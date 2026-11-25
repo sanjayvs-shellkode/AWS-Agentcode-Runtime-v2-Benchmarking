@@ -43,17 +43,17 @@ def _copy_sources(src_dir: Path, dest: Path) -> None:
 
 def build_lambda() -> None:
     out = _fresh(BUILD / "lambda")
-    _install(out, LAMBDA_PLATFORM, ROOT / "lambda" / "requirements.txt")
-    _copy_sources(ROOT / "lambda", out)
+    _install(out, LAMBDA_PLATFORM, ROOT / "backend" / "lambda" / "requirements.txt")
+    _copy_sources(ROOT / "backend" / "lambda", out)
 
 
 def build_agent_zip() -> None:
     staging = _fresh(BUILD / "agent_pkg")
-    _install(staging, RUNTIME_PLATFORM, ROOT / "agent" / "requirements.txt")
+    _install(staging, RUNTIME_PLATFORM, ROOT / "backend" / "requirements.txt")
     for exe in (staging / "bin").glob("*.exe"):
         exe.unlink()
     (staging / "bin" / "opentelemetry-instrument").write_text(OTEL_LAUNCHER, newline="\n")
-    _copy_sources(ROOT / "agent", staging)
+    _copy_sources(ROOT / "backend", staging)
 
     zip_path = BUILD / "agent-package.zip"
     zip_path.unlink(missing_ok=True)

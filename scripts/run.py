@@ -10,9 +10,9 @@ After the calls, the script waits for spans and adds each request's server-side 
 session startup plus network.
 
 Usage (repo root, AWS_PROFILE and AWS_REGION set):
-  python bench/run.py --calls 10                  # LLM mode (default)
-  python bench/run.py --mode direct --calls 10    # Gateway tools only, no model
-  python bench/run.py --analyze bench/results/<file>.csv   # redo the span lookup later
+  python scripts/run.py --calls 10                  # LLM mode (default)
+  python scripts/run.py --mode direct --calls 10    # Gateway tools only, no model
+  python scripts/run.py --analyze docs/results/<file>.csv   # redo the span lookup later
 """
 import argparse
 import csv
@@ -28,7 +28,7 @@ from botocore.config import Config
 
 from smoke import REGION, outputs
 
-RESULTS = Path(__file__).resolve().parent / "results"
+RESULTS = Path(__file__).resolve().parents[1] / "docs" / "results"
 VERSIONS = ("V1", "V2")
 PAYLOADS = {
     "direct": {"mode": "direct", "city": "Paris"},
