@@ -25,8 +25,8 @@ MODEL_PROFILE_ARN = os.environ.get("MODEL_PROFILE_ARN", "")
 
 # Required tags for every resource. Update these for your environment.
 REQUIRED_TAGS = {
-    "createdby": "benchmark-user",
-    "purpose": "agentcore-runtime-benchmark",
+    "createdby": os.environ.get("CREATED_BY", "benchmark-user"),
+    "purpose": os.environ.get("PURPOSE_TAG", "agentcore-runtime-benchmark"),
 }
 
 
